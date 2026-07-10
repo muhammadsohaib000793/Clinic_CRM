@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(docker compose up -d 2>&1)"
+    ]
+  }
+}

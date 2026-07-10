@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Write-Output \"node: $\\(node -v 2>$null\\)\"; Write-Output \"npm: $\\(npm -v 2>$null\\)\"; Write-Output \"docker: $\\(docker -v 2>$null\\)\"; Write-Output \"psql: $\\(\\(Get-Command psql -ErrorAction SilentlyContinue\\).Source\\)\")",
+      "PowerShell(npm --workspace client run dev 2>&1)"
+    ]
+  }
+}

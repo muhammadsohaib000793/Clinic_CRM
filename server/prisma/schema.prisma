@@ -1,0 +1,272 @@
+// =============================================================================
+//  CRM & Unified Messaging Platform — Prisma schema (PostgreSQL)
+// -----------------------------------------------------------------------------
+//  Follows the doc §8 data model: Customer, Conversation, Message, Agent,
+//  Doctor, Appointment.
+//
+//  FLAGGED DEVIATIONS / ADDITIONS (per the user's "flag any deviation" rule):
+//   * Conversation.lastInboundAt  -> REQUIRED by §9A (24h-window tracking),
+//                                     distinct from the doc's lastMessageAt.
+//   * Conversation.lastOutboundAt -> needed to compute "unanswered" for red-flag.
+//   * Customer.optedIn / optInAt  -> REQUIRED by §9A ("opt-in only", no cold sends).
+//   * ChannelIdentity (new model) -> maps a channel's external sender id
+//                                     (wa_id / PSID / IGSID) to a Customer so the
+//                                     webhook can route inbound messages.
+//   * MessageTemplate (new model) -> approved WhatsApp templates for out-of-window
+//                                     re-engagement (§9A "template required").
+//   * OutboundLog (new model)     -> §9A send-decision AUDIT TRAIL + rolling
+//                                     rate-limit accounting (IG hourly cap).
+//   * Setting (new model)         -> stores the configurable red-flag threshold
+//                                     (§13 open question: value + who configures).
+//  All additions exist solely to make §9A enforceable and the product runnable.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------- Enums -----------------------------------
+
+enum Channel {
+  WHATSAPP
+  INSTAGRAM
+  MESSENGER
+  OTHER
+}
+
+enum ConversationStatus {
+  OPEN
+  FLAGGED
+  AI_HANDLED
+  CLOSED
+}
+
+enum SenderType {
+  CUSTOMER
+  AGENT
+  AI
+  SYSTEM
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum Role {
+  ADMIN
+  AGENT
+}
+
+enum AgentStatus {
+  ONLINE
+  OFFLINE
+}
+
+enum AppointmentStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+enum TemplateStatus {
+  APPROVED
+  PENDING
+  REJECTED
+}
+
+enum SendDecision {
+  ALLOWED
+  BLOCKED
+}
+
+enum SendMode {
+  FREE_FORM
+  TEMPLATE
+}
+
+// --------------------------------- Customer ----------------------------------
+
+model Customer {
+  id          String   @id @default(uuid())
+  name        String
+  contactInfo Json?    @map("contact_info") // display contact details (phone, handles)
+  notes       String?
+  optedIn     Boolean  @default(false) @map("opted_in") // §9A: opt-in gate
+  optInAt     DateTime? @map("opt_in_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  conversations Conversation[]
+  appointments  Appointment[]
+  identities    ChannelIdentity[]
+
+  @@map("customers")
+}
+
+// Maps a channel-specific sender id to a Customer (webhook routing). ADDITION.
+model ChannelIdentity {
+  id         String   @id @default(uuid())
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  channel    Channel
+  externalId String   @map("external_id") // wa_id / PSID / IGSID
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([channel, externalId])
+  @@index([customerId])
+  @@map("channel_identities")
+}
+
+// -------------------------------- Conversation -------------------------------
+
+model Conversation {
+  id              String             @id @default(uuid())
+  customerId      String             @map("customer_id")
+  customer        Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  channel         Channel
+  assignedAgentId String?            @map("assigned_agent_id")
+  assignedAgent   Agent?             @relation(fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  status          ConversationStatus @default(OPEN)
+  lastMessageAt   DateTime?          @map("last_message_at")
+  lastInboundAt   DateTime?          @map("last_inbound_at")  // §9A 24h-window anchor
+  lastOutboundAt  DateTime?          @map("last_outbound_at") // for "unanswered" calc
+  flaggedAt       DateTime?          @map("flagged_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  messages     Message[]
+  appointments Appointment[]
+
+  @@unique([customerId, channel]) // one live conversation per customer per channel
+  @@index([status])
+  @@index([assignedAgentId])
+  @@map("conversations")
+}
+
+// ---------------------------------- Message ----------------------------------
+
+model Message {
+  id                String           @id @default(uuid())
+  conversationId    String           @map("conversation_id")
+  conversation      Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderType        SenderType
+  senderAgentId     String?          @map("sender_agent_id") // set when senderType = AGENT
+  direction         MessageDirection
+  channel           Channel
+  content           String
+  externalMessageId String?          @unique @map("external_message_id") // dedupe webhook retries
+  status            String?          // sent | delivered | read | failed | dry_run
+  sentAt            DateTime         @default(now()) @map("sent_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+
+  @@index([conversationId, sentAt])
+  @@map("messages")
+}
+
+// ----------------------------------- Agent -----------------------------------
+
+model Agent {
+  id           String      @id @default(uuid())
+  name         String
+  email        String      @unique
+  passwordHash String      @map("password_hash")
+  role         Role        @default(AGENT)
+  status       AgentStatus @default(OFFLINE)
+  lastSeenAt   DateTime?   @map("last_seen_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  assignedConversations Conversation[]
+
+  @@map("agents")
+}
+
+// ----------------------------------- Doctor ----------------------------------
+
+model Doctor {
+  id           String   @id @default(uuid())
+  name         String
+  specialty    String?
+  // Weekly availability, e.g.:
+  // { "slotMinutes": 30, "week": { "mon": [{"start":"09:00","end":"17:00"}], ... } }
+  availability Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  appointments Appointment[]
+
+  @@map("doctors")
+}
+
+// -------------------------------- Appointment --------------------------------
+
+model Appointment {
+  id              String            @id @default(uuid())
+  customerId      String            @map("customer_id")
+  customer        Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  doctorId        String            @map("doctor_id")
+  doctor          Doctor            @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  conversationId  String?           @map("conversation_id")
+  conversation    Conversation?     @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  scheduledAt     DateTime          @map("scheduled_at")   // start
+  durationMinutes Int               @default(30) @map("duration_minutes")
+  endsAt          DateTime          @map("ends_at")        // computed = start + duration
+  status          AppointmentStatus @default(CONFIRMED)
+  reason          String?
+  createdByAgentId String?          @map("created_by_agent_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  @@index([doctorId, scheduledAt])
+  @@index([customerId])
+  @@map("appointments")
+}
+
+// ------------------------ §9A additions: templates/log/settings --------------
+
+model MessageTemplate {
+  id        String         @id @default(uuid())
+  name      String         @unique // e.g. "hello_world", "appointment_reminder"
+  channel   Channel        @default(WHATSAPP)
+  language  String         @default("en_US")
+  status    TemplateStatus @default(PENDING) // must be APPROVED before use
+  category  String?        // UTILITY | MARKETING | AUTHENTICATION
+  body      String         // local copy of template text with {{1}} placeholders
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  @@map("message_templates")
+}
+
+// Every send DECISION is logged here (allowed or blocked, with reason).
+// Instagram hourly rate-limit is computed by counting ALLOWED rows in the last hour.
+model OutboundLog {
+  id             String       @id @default(uuid())
+  conversationId String?      @map("conversation_id")
+  customerId     String?      @map("customer_id")
+  channel        Channel
+  decision       SendDecision
+  reason         String
+  mode           SendMode?
+  templateName   String?      @map("template_name")
+  messageId      String?      @map("message_id") // Message.id when a message was sent
+  initiatedBy    String?      @map("initiated_by") // AGENT:<id> | AI | SYSTEM
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([channel, decision, createdAt])
+  @@index([conversationId])
+  @@map("outbound_logs")
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}

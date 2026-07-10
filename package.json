@@ -1,0 +1,27 @@
+{
+  "name": "crm-unified-messaging-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Custom CRM & Unified Messaging Platform for a clinic (WhatsApp/Messenger/Instagram + appointments + AI agent).",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "postinstall": "echo \"Run 'npm run setup' after filling .env\"",
+    "setup": "npm --workspace server run db:generate && npm --workspace server run db:migrate && npm --workspace server run db:seed",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "dev:server": "npm --workspace server run dev",
+    "dev:client": "npm --workspace client run dev",
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "seed": "npm --workspace server run db:seed",
+    "test": "npm --workspace server run test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=18.18"
+  }
+}
