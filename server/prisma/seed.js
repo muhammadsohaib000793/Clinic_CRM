@@ -11,6 +11,10 @@ const hoursAgo = (h) => new Date(Date.now() - h * 60 * 60 * 1000);
 
 async function main() {
   console.log('Seeding…');
+  // Demo agents + sample conversations are seeded only in dev / when SEED_DEMO=true.
+  // Production (NODE_ENV=production) seeds just the admin, doctors, and templates —
+  // real agents are then created through the Admin screen.
+  const seedDemo = process.env.SEED_DEMO === 'true' || (process.env.NODE_ENV || 'development') !== 'production';
 
   // -- Settings ---------------------------------------------------------------
   await prisma.setting.upsert({
@@ -19,32 +23,15 @@ async function main() {
     create: { key: 'redflag_threshold_minutes', value: '15' },
   });
 
-  // -- Agents (1 admin + 5 support/sales agents per §1) -----------------------
-  const adminHash = await bcrypt.hash('Admin123!', 10);
-  const agentHash = await bcrypt.hash('Agent123!', 10);
-
+  // -- Admin account (credentials come from env; set ADMIN_PASSWORD before deploy) --
+  const adminEmail = (process.env.ADMIN_EMAIL || 'admin@weevolveit.mx').toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123!';
+  const adminHash = await bcrypt.hash(adminPassword, 10);
   await prisma.agent.upsert({
-    where: { email: 'admin@weevolveit.mx' },
-    update: {},
-    create: { name: 'Clinic Admin', email: 'admin@weevolveit.mx', passwordHash: adminHash, role: 'ADMIN' },
+    where: { email: adminEmail },
+    update: { passwordHash: adminHash, role: 'ADMIN' }, // env is the source of truth
+    create: { name: 'Clinic Admin', email: adminEmail, passwordHash: adminHash, role: 'ADMIN' },
   });
-
-  const agentDefs = [
-    ['Sofia Martinez', 'sofia@weevolveit.mx'],
-    ['Diego Herrera', 'diego@weevolveit.mx'],
-    ['Valentina Cruz', 'valentina@weevolveit.mx'],
-    ['Mateo Rojas', 'mateo@weevolveit.mx'],
-    ['Camila Flores', 'camila@weevolveit.mx'],
-  ];
-  const agents = [];
-  for (const [name, email] of agentDefs) {
-    const a = await prisma.agent.upsert({
-      where: { email },
-      update: {},
-      create: { name, email, passwordHash: agentHash, role: 'AGENT' },
-    });
-    agents.push(a);
-  }
 
   // -- Doctors ----------------------------------------------------------------
   const weekday = [
@@ -107,12 +94,33 @@ async function main() {
     },
   });
 
-  // -- Demo conversations (only when the DB is empty) -------------------------
+  // -- Demo agents + conversations — skipped in production -------------------
+  if (!seedDemo) {
+    console.log(`Seed complete (production): admin (${adminEmail}) + doctors + templates.`);
+    console.log('Create your agents from the Admin screen after logging in.');
+    return;
+  }
+
   const existingCustomers = await prisma.customer.count();
   if (existingCustomers > 0) {
     console.log('Customers already present — skipping demo conversation seed.');
     console.log('Seed complete.');
     return;
+  }
+
+  // Demo agents (dev/demo only — in production you create agents via Admin).
+  const agentHash = await bcrypt.hash('Agent123!', 10);
+  const agents = [];
+  for (const [name, email] of [
+    ['Sofia Martinez', 'sofia@weevolveit.mx'],
+    ['Diego Herrera', 'diego@weevolveit.mx'],
+    ['Valentina Cruz', 'valentina@weevolveit.mx'],
+    ['Mateo Rojas', 'mateo@weevolveit.mx'],
+    ['Camila Flores', 'camila@weevolveit.mx'],
+  ]) {
+    agents.push(
+      await prisma.agent.upsert({ where: { email }, update: {}, create: { name, email, passwordHash: agentHash, role: 'AGENT' } }),
+    );
   }
 
   // Helper to create a customer + channel identity + conversation + messages.
@@ -249,8 +257,8 @@ async function main() {
     messages: [],
   });
 
-  console.log('Seed complete: 1 admin, 5 agents, 3 doctors, 3 templates, 5 demo conversations.');
-  console.log('Login: admin@weevolveit.mx / Admin123!   |   sofia@weevolveit.mx / Agent123!');
+  console.log('Seed complete (demo): admin + 5 agents + 3 doctors + 3 templates + 5 conversations.');
+  console.log(`Admin login: ${adminEmail}`);
 }
 
 main()

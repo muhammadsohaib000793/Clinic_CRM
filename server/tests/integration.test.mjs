@@ -3,6 +3,8 @@
 // Uses Node's built-in test runner — no extra dependencies.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import { env } from '../src/config/env.js';
 
 const BASE = process.env.TEST_BASE_URL || 'http://localhost:3000';
 
@@ -14,14 +16,16 @@ let rfConvId; // shared between the red-flag tests
 async function req(path, { method = 'GET', body, token } = {}) {
   // API routes live under /api; the Meta webhook sits at the root.
   const url = BASE + (path.startsWith('/webhook') ? path : `/api${path}`);
-  const res = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const raw = body ? JSON.stringify(body) : undefined;
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  // Sign webhook posts so they pass Meta signature verification when a secret is set.
+  if (path.startsWith('/webhook') && raw && env.meta.appSecret) {
+    headers['X-Hub-Signature-256'] = 'sha256=' + crypto.createHmac('sha256', env.meta.appSecret).update(raw).digest('hex');
+  }
+  const res = await fetch(url, { method, headers, body: raw });
   const text = await res.text();
   let data;
   try {
@@ -95,7 +99,7 @@ async function findConversationByName(token, name) {
 }
 
 before(async () => {
-  const a = await req('/auth/login', { method: 'POST', body: { email: 'admin@weevolveit.mx', password: 'Admin123!' } });
+  const a = await req('/auth/login', { method: 'POST', body: { email: 'admin@weevolveit.mx', password: 'Admin123!321' } });
   assert.equal(a.status, 200, 'admin login should succeed — is the server running and seeded?');
   adminToken = a.data.token;
   const s = await req('/auth/login', { method: 'POST', body: { email: 'sofia@weevolveit.mx', password: 'Agent123!' } });
@@ -106,7 +110,7 @@ before(async () => {
 
 // ------------------------------ AUTH & RBAC ---------------------------------
 test('AUTH-01 login with valid credentials returns token + role', async () => {
-  const { status, data } = await req('/auth/login', { method: 'POST', body: { email: 'admin@weevolveit.mx', password: 'Admin123!' } });
+  const { status, data } = await req('/auth/login', { method: 'POST', body: { email: 'admin@weevolveit.mx', password: 'Admin123!321' } });
   assert.equal(status, 200);
   assert.ok(data.token);
   assert.equal(data.agent.role, 'ADMIN');

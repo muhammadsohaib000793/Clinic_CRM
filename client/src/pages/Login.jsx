@@ -7,8 +7,8 @@ export default function Login() {
   const { login } = useAuth();
   const nav = useNavigate();
   const cardRef = useRef();
-  const [email, setEmail] = useState('admin@weevolveit.mx');
-  const [password, setPassword] = useState('Admin123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -54,13 +54,6 @@ export default function Login() {
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-        <div className="hint-box">
-          <b>Demo logins</b>
-          <br />
-          Admin — admin@weevolveit.mx / Admin123!
-          <br />
-          Agent — sofia@weevolveit.mx / Agent123!
-        </div>
       </div>
     </div>
   );
