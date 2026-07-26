@@ -9,6 +9,7 @@ import { reportsRouter } from './reports.js';
 import { settingsRouter } from './settings.js';
 import { statusRouter } from './status.js';
 import { redflagRouter } from './redflag.js';
+import { auditRouter } from './audit.js';
 
 export const apiRouter = Router();
 
@@ -23,3 +24,4 @@ apiRouter.use('/reports', reportsRouter);
 apiRouter.use('/settings', settingsRouter);
 apiRouter.use('/status', statusRouter);
 apiRouter.use('/redflag', redflagRouter);
+apiRouter.use('/audit', auditRouter);

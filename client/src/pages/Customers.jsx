@@ -7,17 +7,20 @@ import { ChannelChip, OptInBadge } from '../components/ui.jsx';
 
 export default function Customers() {
   const [list, setList] = useState([]);
+  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [drawerId, setDrawerId] = useState(null);
   const [bookCustomer, setBookCustomer] = useState(null);
+  const PAGE = 50;
 
-  const load = async () => {
-    const { customers } = await api.get('/customers', { search });
-    setList(customers);
+  const load = async (offset = 0, append = false) => {
+    const r = await api.get('/customers', { search, limit: PAGE, offset });
+    setTotal(r.total);
+    setList((prev) => (append ? [...prev, ...r.customers] : r.customers));
   };
 
   useEffect(() => {
-    load();
+    load(0, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
@@ -75,6 +78,14 @@ export default function Customers() {
         </table>
         {list.length === 0 && <div className="empty">No customers found.</div>}
       </div>
+
+      {list.length < total && (
+        <div style={{ marginTop: 12, textAlign: 'center' }}>
+          <button className="btn btn-sm" onClick={() => load(list.length, true)}>
+            Load more ({list.length} of {total})
+          </button>
+        </div>
+      )}
 
       {drawerId && (
         <CustomerDrawer

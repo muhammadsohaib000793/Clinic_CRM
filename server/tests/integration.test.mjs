@@ -302,8 +302,14 @@ test('RF-01 scan flags a conversation unanswered past threshold', async () => {
   // Self-contained: an inbound from >24h ago. AI cannot free-form outside the
   // window, so it stays unanswered and OPEN -> the scanner must flag it.
   const waId = newWaId();
-  await req('/webhook', { method: 'POST', body: waPayload({ waId, name: 'RedFlag Fixture', text: 'anyone there?', tsSecondsAgo: 25 * 3600 }) });
-  const conv = await waitFor(async () => findConversationByName(adminToken, 'RedFlag Fixture'));
+  const rfName = `RedFlag Fixture ${uniq()}`; // unique per run so re-runs don't collide
+  await req('/webhook', { method: 'POST', body: waPayload({ waId, name: rfName, text: 'anyone there?', tsSecondsAgo: 25 * 3600 }) });
+  // Wait until the inbound anchor (lastInboundAt) is persisted, not just the
+  // conversation row — otherwise the scan can run before the timestamp is set.
+  const conv = await waitFor(async () => {
+    const c = await findConversationByName(adminToken, rfName);
+    return c && c.lastInboundAt ? c : null;
+  });
   assert.ok(conv);
   rfConvId = conv.id;
   const scan = await req('/redflag/scan', { method: 'POST', token: adminToken });
@@ -347,11 +353,18 @@ test('APPT-01 book a valid appointment (CONFIRMED)', async () => {
 test('APPT-02 double-booking the same slot is BLOCKED (DOUBLE_BOOKING)', async () => {
   const doctors = (await req('/doctors', { token: adminToken })).data.doctors;
   const cust = (await req('/customers', { token: adminToken })).data.customers[0];
-  const when = nextWeekdayAt(11);
-  when.setMinutes((Math.floor(Math.random() * 4) + 6) * 30 % 60);
-  const body = { doctorId: doctors[1].id, customerId: cust.id, scheduledAt: when.toISOString(), durationMinutes: 30 };
-  const first = await req('/appointments', { method: 'POST', token: adminToken, body });
-  assert.equal(first.status, 201);
+  // Find a free future weekday 11:00 slot (robust to appointments from prior runs).
+  let body = null;
+  for (let d = 15; d < 40 && !body; d++) {
+    const when = new Date();
+    when.setDate(when.getDate() + d);
+    if (when.getDay() === 0 || when.getDay() === 6) continue;
+    when.setHours(11, 0, 0, 0);
+    const candidate = { doctorId: doctors[1].id, customerId: cust.id, scheduledAt: when.toISOString(), durationMinutes: 30 };
+    const first = await req('/appointments', { method: 'POST', token: adminToken, body: candidate });
+    if (first.status === 201) body = candidate;
+  }
+  assert.ok(body, 'a first slot should book');
   const second = await req('/appointments', { method: 'POST', token: adminToken, body });
   assert.equal(second.status, 409);
   assert.equal(second.data.error.details.code, 'DOUBLE_BOOKING');
@@ -473,4 +486,85 @@ test('TPL-01 templates list includes seeded templates', async () => {
   const names = data.templates.map((t) => t.name);
   assert.ok(names.includes('appointment_reminder'));
   assert.ok(names.includes('reengage_followup'));
+});
+
+// ------------------------ NEW FEATURES (gap closing) ------------------------
+test('AIBOOK-01 AI books an appointment from a chat when all agents offline', async (t) => {
+  const online = (await req('/reports/overview', { token: adminToken })).data.agents.filter((a) => a.status === 'ONLINE');
+  if (online.length > 0) {
+    t.skip(`an agent is ONLINE (${online.map((a) => a.name).join(',')}) — AI suppressed; close browser sessions to test`);
+    return;
+  }
+  const waId = newWaId();
+  await req('/webhook', {
+    method: 'POST',
+    body: waPayload({ waId, name: 'AI Booker', text: 'I would like to book an appointment with Dr. Ana Ruiz on monday at 10am' }),
+  });
+  const conv = await waitFor(async () => {
+    const c = await findConversationByName(adminToken, 'AI Booker');
+    if (!c) return null;
+    const d = await req(`/conversations/${c.id}`, { token: adminToken });
+    return d.data.conversation.messages.some((m) => m.senderType === 'AI') ? c : null;
+  });
+  assert.ok(conv, 'AI should have replied');
+  const custId = (await req(`/conversations/${conv.id}`, { token: adminToken })).data.conversation.customer.id;
+  const appts = (await req(`/appointments?customerId=${custId}`, { token: adminToken })).data.appointments;
+  assert.ok(appts.length >= 1, 'AI should have created an appointment');
+});
+
+test('DOC-03 admin creates + updates a doctor schedule', async () => {
+  const created = await req('/doctors', { method: 'POST', token: adminToken, body: { name: `Dr. Test ${uniq()}`, specialty: 'Testing' } });
+  assert.equal(created.status, 201);
+  const availability = { slotMinutes: 30, week: { mon: [{ start: '08:00', end: '12:00' }], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] } };
+  const r = await req(`/doctors/${created.data.doctor.id}`, { method: 'PATCH', token: adminToken, body: { availability } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.doctor.availability.week.mon[0].start, '08:00');
+});
+test('DOC-04 agent cannot update a doctor (403)', async () => {
+  const doc = (await req('/doctors', { token: adminToken })).data.doctors[0];
+  const r = await req(`/doctors/${doc.id}`, { method: 'PATCH', token: sofiaToken, body: { specialty: 'x' } });
+  assert.equal(r.status, 403);
+});
+
+test('RECEIPT-01 WhatsApp status webhook updates a message to read', async () => {
+  const lucia = await findConversationByName(adminToken, 'Lucía Fernández');
+  const send = await req(`/conversations/${lucia.id}/reply`, { method: 'POST', token: adminToken, body: { content: 'Testing delivery receipts' } });
+  assert.equal(send.status, 200);
+  const extId = send.data.message.externalMessageId;
+  const msgId = send.data.message.id;
+  assert.ok(extId, 'outbound message should have an external id (dry-run id in dev)');
+  const statusPayload = {
+    object: 'whatsapp_business_account',
+    entry: [{ changes: [{ value: { statuses: [{ id: extId, status: 'read', timestamp: `${Math.floor(Date.now() / 1000)}`, recipient_id: 'x' }] } }] }],
+  };
+  await req('/webhook', { method: 'POST', body: statusPayload });
+  await new Promise((r) => setTimeout(r, 500));
+  const after = await req(`/conversations/${lucia.id}`, { token: adminToken });
+  const updated = after.data.conversation.messages.find((m) => m.id === msgId);
+  assert.equal(updated.status, 'read');
+});
+
+test('SEC-01 hardening headers are present', async () => {
+  const res = await fetch(`${BASE}/health`);
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(res.headers.get('x-frame-options'), 'DENY');
+});
+
+test('PAGE-01 customers list paginates with a total', async () => {
+  const { status, data } = await req('/customers?limit=2&offset=0', { token: adminToken });
+  assert.equal(status, 200);
+  assert.ok(Array.isArray(data.customers));
+  assert.ok(data.customers.length <= 2);
+  assert.ok(typeof data.total === 'number' && data.total >= data.customers.length);
+});
+
+test('AUDIT-01 viewing a patient is logged; admin reads it; agent forbidden', async () => {
+  const cust = (await req('/customers', { token: adminToken })).data.customers[0];
+  await req(`/customers/${cust.id}`, { token: adminToken }); // -> VIEW_CUSTOMER
+  await new Promise((r) => setTimeout(r, 300));
+  const audit = await req('/audit?limit=50', { token: adminToken });
+  assert.equal(audit.status, 200);
+  assert.ok(audit.data.entries.some((e) => e.action === 'VIEW_CUSTOMER'));
+  const forbidden = await req('/audit', { token: sofiaToken });
+  assert.equal(forbidden.status, 403);
 });

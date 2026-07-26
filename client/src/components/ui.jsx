@@ -1,4 +1,5 @@
 import { CHANNEL_LABELS } from '../lib/format.js';
+import { InboxIcon } from './icons.jsx';
 
 export function ChannelChip({ channel }) {
   return (
@@ -12,8 +13,8 @@ export function ChannelChip({ channel }) {
 export function StatusBadge({ status }) {
   const map = {
     OPEN: ['badge-primary', 'Open'],
-    FLAGGED: ['badge-error', '🚩 Flagged'],
-    AI_HANDLED: ['badge-warning', '🤖 AI handling'],
+    FLAGGED: ['badge-error', 'Flagged'],
+    AI_HANDLED: ['badge-warning', 'AI handling'],
     CLOSED: ['badge', 'Closed'],
   };
   const [cls, label] = map[status] || ['badge', status];
@@ -49,10 +50,10 @@ export function Spinner() {
   return <div className="spin" />;
 }
 
-export function Empty({ icon = '💬', title, children }) {
+export function Empty({ title, children }) {
   return (
     <div className="empty">
-      <div style={{ fontSize: 40 }}>{icon}</div>
+      <InboxIcon width={40} height={40} style={{ opacity: 0.3 }} />
       <div style={{ fontWeight: 700, color: 'var(--color-text-primary)' }}>{title}</div>
       {children && <div>{children}</div>}
     </div>

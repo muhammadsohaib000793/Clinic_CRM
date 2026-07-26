@@ -1,6 +1,7 @@
 // Socket.IO event name constants — shared conceptually with the client.
 export const EVENTS = Object.freeze({
   MESSAGE_NEW: 'message:new',
+  MESSAGE_STATUS: 'message:status',
   CONVERSATION_UPDATED: 'conversation:updated',
   CONVERSATION_CLAIMED: 'conversation:claimed',
   CONVERSATION_FLAGGED: 'conversation:flagged',

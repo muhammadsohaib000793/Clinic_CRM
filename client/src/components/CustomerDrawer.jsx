@@ -68,7 +68,7 @@ export default function CustomerDrawer({ customerId, onClose, onBook }) {
             )}
 
             <button className="btn btn-primary btn-block" style={{ marginTop: 12 }} onClick={onBook}>
-              📅 Book appointment
+              Book appointment
             </button>
 
             <h3 style={{ marginTop: 16 }}>Conversation history</h3>

@@ -3,6 +3,7 @@ import { asyncHandler } from '../lib/errors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/roleGuard.js';
 import * as appt from '../services/appointments/service.js';
+import { logAudit } from '../services/audit/service.js';
 
 export const appointmentsRouter = Router();
 appointmentsRouter.use(requireAuth);
@@ -18,6 +19,13 @@ appointmentsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     const appointment = await appt.bookAppointment({ ...req.body, agentId: req.agent.id });
+    logAudit({
+      agentId: req.agent.id,
+      agentName: req.agent.name,
+      action: 'BOOK_APPOINTMENT',
+      customerId: appointment.customerId,
+      detail: `${appointment.doctor?.name} @ ${new Date(appointment.scheduledAt).toISOString()}`,
+    });
     res.status(201).json({ appointment });
   }),
 );
@@ -45,6 +53,14 @@ doctorsRouter.post(
   requireRole('ADMIN'),
   asyncHandler(async (req, res) => {
     res.status(201).json({ doctor: await appt.createDoctor(req.body || {}) });
+  }),
+);
+
+doctorsRouter.patch(
+  '/:id',
+  requireRole('ADMIN'),
+  asyncHandler(async (req, res) => {
+    res.json({ doctor: await appt.updateDoctor(req.params.id, req.body || {}) });
   }),
 );
 

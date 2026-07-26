@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import Layout from '../components/Layout.jsx';
 import { api } from '../api/client.js';
 import { useToast } from '../context/ToastContext.jsx';
+import DoctorManager from '../components/DoctorManager.jsx';
+import AuditLogView from '../components/AuditLogView.jsx';
 
 export default function Admin() {
   const toast = useToast();
@@ -177,6 +179,14 @@ export default function Admin() {
             </table>
           </div>
         </div>
+      </div>
+
+      <div style={{ marginTop: 24 }}>
+        <DoctorManager />
+      </div>
+
+      <div style={{ marginTop: 24 }}>
+        <AuditLogView />
       </div>
     </Layout>
   );

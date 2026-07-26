@@ -8,10 +8,12 @@ PostgreSQL and Meta channels in **dry-run** (no real tokens yet)._
 ## TL;DR
 
 This is a **working product**, not scaffolding. Backend + frontend + DB + webhook +
-all seven doc features are implemented and were smoke-tested this session. Every
-outbound message routes through one §9A choke point. An adversarial multi-agent audit
-of the ban-prevention found **one** real concurrency defect (Instagram cap race), which
-was **fixed and re-verified**.
+all seven doc features are implemented, plus a **gap-closing round** (AI now actually
+books appointments, doctor-availability editor, reassign UI, delivery receipts, security
+hardening, and a PHI access-audit log). Every outbound message routes through one §9A
+choke point. **53 automated tests** cover it (51 pass, 2 skip when an agent is online).
+Two adversarial multi-agent audits ran: one on the ban-prevention (found + fixed the
+Instagram cap race), one on the new features.
 
 ---
 
@@ -35,7 +37,13 @@ was **fixed and re-verified**.
 | Customer profiles & history | ✅ | Profile drawer with identities, opt-in toggle, notes, appts, history |
 | Reporting dashboard | ✅ | `/reports/overview` returns volume, response time, bookings, agent status |
 | Realtime (Socket.IO) | ✅ | Presence drives AI offline logic; inbox/thread live-update events wired |
-| Frontend build | ✅ | `vite build` → 87 modules, 0 errors |
+| **AI books appointments** | ✅ | AI parses intent + day/time, books via the real (overlap-checked) service; verified right doctor/day/time, asks when info missing |
+| **Doctor availability editor** (Admin) | ✅ | Admin edits each doctor's weekly hours; `PATCH /doctors/:id`; agent → 403 |
+| **Reassign conversation** (Admin) | ✅ | Header dropdown reassigns to any agent |
+| **Delivery / read receipts** | ✅ | WhatsApp status webhook → message `read`; ticks on outbound bubbles |
+| **Security hardening** | ✅ | Hardening headers + in-memory login rate-limit; headers asserted in tests |
+| **PHI access audit log** | ✅ | Views/updates/bookings logged; Admin "Access log"; agent → 403 |
+| Frontend build | ✅ | `vite build` → 89 modules, 0 errors |
 | GSAP + theming (§6) | ✅ | Tokens, stagger/modal/drawer/pulse/count-up/scroll, `prefers-reduced-motion` |
 
 ---
@@ -51,7 +59,8 @@ was **fixed and re-verified**.
 | **Production WhatsApp number** | Test number assumed | 90-day/5-recipient test number; register a real business number before launch (§13). Use `WHATSAPP_TEST_RECIPIENTS` allowlist meanwhile. |
 | **WhatsApp templates** | 2 seeded as APPROVED locally | Real templates must be created + approved in WhatsApp Manager; mirror their names in the `message_templates` table. |
 | **Email/SMTP (Resend)** | Not built | Doc §11 says "not decided yet." No code assumes it. Add when confirmed. |
-| **Doctor availability** | Seeded Mon–Fri 9–13/14–18 | Real per-doctor schedules to be entered (Admin → doctors API exists; UI for editing schedules not built). |
+| **Media / attachments** | Text only | Inbound media shows as `[attachment]`; storing, rendering, and sending media needs the real Graph API — deferred. |
+| **Full HIPAA / compliance** | Baseline built | Access **audit log** is now built; encryption-at-rest, a retention policy, and the applicable regime are decisions + infrastructure, not code alone (§13). |
 
 ---
 
@@ -97,6 +106,26 @@ choke-point integrity, 24h window, opt-in, rate-limit, AI agent, and templates.
 
 ---
 
+## 🔒 Gap-features audit result (second adversarial pass)
+
+A 4-lens adversarial workflow (find → independently verify, 15 agents) attacked the newly-built
+features: AI booking, receipts, security middleware, and audit. It found **11 confirmed defects —
+all now fixed and re-verified**:
+
+- **AI booking (6):** wrong-doctor from a substring match (`"ana"` in `"mañana"`), invalid `N/N`
+  date overflow to 2028, `"2:30"` parsed as AM, arbitrary-default doctor, over-eager trigger, and
+  booking an earlier slot than requested → all fixed (accent-safe word-boundary matching, date
+  validation, afternoon heuristic, **ask instead of defaulting**, no earlier-slot fallback).
+- **AI runner (2):** an in-flight-lock TOCTOU (double-text → double-book) and a phantom booking when
+  the confirmation was blocked → fixed (lock acquired before any `await`; a blocked confirmation now
+  **cancels the booking and audits the reversal**).
+- **Security (1):** rate-limiter keyed on `req.ip` with no `trust proxy` (shared bucket behind a
+  proxy) → fixed (`app.set('trust proxy', 1)`).
+- **Receipts (1):** status could regress `read → delivered` on a retried webhook → fixed
+  (monotonic, rank-guarded status updates).
+
+Re-verified with the direct booking tests and the full **53-test suite (all green)**.
+
 ## ⚠️ Deviations from the doc (flagged, per your rule)
 
 - **Data model additions** (schema comments mark each): `Conversation.lastInboundAt` &
@@ -124,6 +153,7 @@ choke-point integrity, 24h window, opt-in, rate-limit, AI agent, and templates.
 - Real WhatsApp production number timing/ownership.
 - Go-live criteria to flip the Meta app Dev → Live.
 - Which WhatsApp templates to draft + submit for approval.
-- Compliance regime for patient data (HIPAA / local) — not yet addressed anywhere in code.
+- Compliance regime for patient data (HIPAA / local) — a **PHI access-audit log is now built** as a
+  baseline, but the regime, encryption-at-rest, and retention policy still need your decision.
 - Red-flag threshold value (defaulted to 15 min; configurable in Admin).
 - Whether doctors need their own login/role (currently a scheduling resource only).

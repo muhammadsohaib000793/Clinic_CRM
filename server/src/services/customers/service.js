@@ -2,17 +2,24 @@
 import { prisma } from '../../db/prisma.js';
 import { NotFoundError } from '../../lib/errors.js';
 
-export async function listCustomers({ search } = {}) {
+export async function listCustomers({ search, limit = 50, offset = 0 } = {}) {
   const where = search ? { name: { contains: search, mode: 'insensitive' } } : {};
-  return prisma.customer.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-    take: 200,
-    include: {
-      identities: true,
-      _count: { select: { conversations: true, appointments: true } },
-    },
-  });
+  const take = Math.min(Number(limit) || 50, 200);
+  const skip = Math.max(Number(offset) || 0, 0);
+  const [customers, total] = await Promise.all([
+    prisma.customer.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take,
+      include: {
+        identities: true,
+        _count: { select: { conversations: true, appointments: true } },
+      },
+    }),
+    prisma.customer.count({ where }),
+  ]);
+  return { customers, total };
 }
 
 export async function getCustomer(id) {

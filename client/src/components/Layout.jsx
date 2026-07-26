@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSocket, useSocketEvent } from '../context/SocketContext.jsx';
 import { api } from '../api/client.js';
+import { InboxIcon, UsersIcon, CalendarIcon, ChartIcon, SettingsIcon } from './icons.jsx';
 
 export default function Layout({ children, title }) {
   const { agent, logout, isAdmin } = useAuth();
@@ -51,26 +52,26 @@ export default function Layout({ children, title }) {
         </div>
         <nav>
           <NavLink to="/inbox" className="nav-link">
-            <span>💬</span>
+            <InboxIcon />
             <span className="label">Inbox</span>
             {flaggedCount > 0 && <span className="count">{flaggedCount}</span>}
           </NavLink>
           <NavLink to="/customers" className="nav-link">
-            <span>👤</span>
+            <UsersIcon />
             <span className="label">Customers</span>
           </NavLink>
           <NavLink to="/appointments" className="nav-link">
-            <span>📅</span>
+            <CalendarIcon />
             <span className="label">Appointments</span>
           </NavLink>
           {isAdmin && (
             <>
               <NavLink to="/dashboard" className="nav-link">
-                <span>📊</span>
+                <ChartIcon />
                 <span className="label">Dashboard</span>
               </NavLink>
               <NavLink to="/admin" className="nav-link">
-                <span>⚙️</span>
+                <SettingsIcon />
                 <span className="label">Admin</span>
               </NavLink>
             </>

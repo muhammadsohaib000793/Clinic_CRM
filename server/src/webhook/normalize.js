@@ -62,11 +62,40 @@ export function normalizeWebhook(body) {
           (Array.isArray(msg.message.attachments) && msg.message.attachments.length
             ? '[attachment]'
             : '');
-        out.push(make(channel, msg.sender?.id, undefined, text, msg.message.mid, toMs(msg.timestamp)));
+        out.push(make(channel, msg.sender?.id, msg.sender?.name, text, msg.message.mid, toMs(msg.timestamp)));
       }
     }
     return out;
   }
 
   return out; // unknown object -> nothing to ingest
+}
+
+// Extracts delivery/read status updates. WhatsApp reports per-message statuses
+// (sent/delivered/read/failed) keyed by the message id we stored. Messenger/IG
+// report delivery by message ids.
+export function normalizeStatuses(body) {
+  const out = [];
+  const object = body?.object;
+  const entries = body?.entry || [];
+
+  if (object === 'whatsapp_business_account') {
+    for (const entry of entries) {
+      for (const change of entry.changes || []) {
+        for (const s of change.value?.statuses || []) {
+          if (s.id && s.status) out.push({ externalMessageId: s.id, status: s.status });
+        }
+      }
+    }
+    return out;
+  }
+
+  if (object === 'page' || object === 'instagram') {
+    for (const entry of entries) {
+      for (const msg of entry.messaging || []) {
+        for (const mid of msg.delivery?.mids || []) out.push({ externalMessageId: mid, status: 'delivered' });
+      }
+    }
+  }
+  return out;
 }

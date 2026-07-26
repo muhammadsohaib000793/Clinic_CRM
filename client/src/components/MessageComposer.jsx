@@ -74,11 +74,11 @@ export default function MessageComposer({ conversation, onSent }) {
       <div className="policy-hint">
         {windowOpen ? (
           <span className="policy-ok">
-            ✓ 24h window open — free-form reply allowed ({conversation.window.remainingMinutes}m left)
+            24h window open — free-form reply allowed ({conversation.window.remainingMinutes}m left)
           </span>
         ) : (
           <span className="policy-template">
-            ⚠ Outside the 24h window — an approved template is required to re-engage
+            Outside the 24h window — an approved template is required to re-engage
           </span>
         )}
         {!conversation.customer?.optedIn && <span className="policy-blocked">· customer not opted in</span>}

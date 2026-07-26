@@ -36,6 +36,19 @@ export async function createDoctor({ name, specialty, availability }) {
   return prisma.doctor.create({ data: { name, specialty: specialty || null, availability: availability || null } });
 }
 
+export async function updateDoctor(id, { name, specialty, availability }) {
+  const data = {};
+  if (name !== undefined) data.name = name;
+  if (specialty !== undefined) data.specialty = specialty;
+  if (availability !== undefined) data.availability = availability;
+  try {
+    return await prisma.doctor.update({ where: { id }, data });
+  } catch (e) {
+    if (e.code === 'P2025') throw new NotFoundError('Doctor not found');
+    throw e;
+  }
+}
+
 export async function listAppointments({ doctorId, customerId, from, to, status } = {}) {
   const where = {};
   if (doctorId) where.doctorId = doctorId;

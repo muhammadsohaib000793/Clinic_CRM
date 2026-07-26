@@ -16,7 +16,9 @@
     "dev:client": "npm --workspace client run dev",
     "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
     "seed": "npm --workspace server run db:seed",
-    "test": "npm --workspace server run test"
+    "test": "npm --workspace server run test",
+    "build": "npm --workspace client run build && npm --workspace server run db:generate",
+    "start": "npm --workspace server run start"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

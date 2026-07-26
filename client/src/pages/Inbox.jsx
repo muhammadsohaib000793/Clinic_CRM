@@ -49,7 +49,7 @@ export default function Inbox() {
           <ConversationThread conversationId={id} onChanged={load} />
         ) : (
           <div className="thread">
-            <Empty icon="📨" title="Select a conversation">
+            <Empty title="Select a conversation">
               Pick a conversation from the list to view history and reply.
             </Empty>
           </div>

@@ -33,3 +33,9 @@ Thumbs.db
 # Runtime
 coverage/
 .cache/
+
+# Credential handoffs — contain live tokens, NEVER commit
+2026-0_1.TXT
+*handoff*.txt
+*handoff*.TXT
+*.secrets.txt

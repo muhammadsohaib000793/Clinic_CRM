@@ -9,9 +9,20 @@ import CustomerDrawer from './CustomerDrawer.jsx';
 import BookingModal from './BookingModal.jsx';
 import { formatTime } from '../lib/format.js';
 
+function statusTick(status) {
+  switch (status) {
+    case 'read': return <span title="read" style={{ color: '#34b7f1', marginLeft: 5 }}>✓✓</span>;
+    case 'delivered': return <span title="delivered" style={{ marginLeft: 5 }}>✓✓</span>;
+    case 'sent': return <span title="sent" style={{ marginLeft: 5 }}>✓</span>;
+    case 'failed': return <span title="failed" style={{ color: 'var(--color-error)', marginLeft: 5 }}>failed</span>;
+    case 'dry_run': return <span title="dry-run" style={{ marginLeft: 5 }}>· dry-run</span>;
+    default: return null;
+  }
+}
+
 function MessageBubble({ m }) {
   if (m.senderType === 'SYSTEM') {
-    return <div className="handoff-marker">🤝 {m.content}</div>;
+    return <div className="handoff-marker">{m.content}</div>;
   }
   const cls = m.senderType === 'CUSTOMER' ? 'in' : m.senderType === 'AI' ? 'ai' : 'out';
   const who = m.senderType === 'CUSTOMER' ? 'Customer' : m.senderType === 'AI' ? 'AI agent' : 'Agent';
@@ -20,21 +31,26 @@ function MessageBubble({ m }) {
       {m.content}
       <div className="meta">
         {who} · {formatTime(m.sentAt)}
-        {m.status === 'dry_run' ? ' · dry-run' : ''}
+        {m.direction === 'OUTBOUND' ? statusTick(m.status) : null}
       </div>
     </div>
   );
 }
 
 export default function ConversationThread({ conversationId, onChanged }) {
-  const { agent } = useAuth();
+  const { agent, isAdmin } = useAuth();
   const { socket } = useSocket();
   const toast = useToast();
   const [conv, setConv] = useState(null);
   const [loading, setLoading] = useState(true);
   const [drawer, setDrawer] = useState(false);
   const [booking, setBooking] = useState(false);
+  const [agents, setAgents] = useState([]);
   const bodyRef = useRef();
+
+  useEffect(() => {
+    if (isAdmin) api.get('/agents').then((r) => setAgents(r.agents)).catch(() => {});
+  }, [isAdmin]);
 
   const load = async () => {
     const { conversation } = await api.get(`/conversations/${conversationId}`);
@@ -71,6 +87,13 @@ export default function ConversationThread({ conversationId, onChanged }) {
   );
   useSocketEvent(
     'conversation:takeover',
+    (p) => {
+      if (p.conversationId === conversationId) load();
+    },
+    [conversationId],
+  );
+  useSocketEvent(
+    'message:status',
     (p) => {
       if (p.conversationId === conversationId) load();
     },
@@ -116,6 +139,16 @@ export default function ConversationThread({ conversationId, onChanged }) {
     load();
     onChanged?.();
   };
+  const reassign = async (agentId) => {
+    try {
+      await api.post(`/conversations/${conv.id}/assign`, { agentId: agentId || null });
+      toast.success(agentId ? 'Reassigned' : 'Unassigned');
+      load();
+      onChanged?.();
+    } catch (e) {
+      toast.error('Reassign failed', e.message);
+    }
+  };
 
   const mine = conv.assignedAgent?.id === agent.id;
 
@@ -146,8 +179,21 @@ export default function ConversationThread({ conversationId, onChanged }) {
               Take over
             </button>
           )}
+          {isAdmin && (
+            <select
+              value={conv.assignedAgent?.id || ''}
+              onChange={(e) => reassign(e.target.value)}
+              title="Assign to agent"
+              style={{ padding: '5px 8px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface)', fontSize: 'var(--font-size-sm)' }}
+            >
+              <option value="">Unassigned</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          )}
           <button className="btn btn-sm" onClick={() => setBooking(true)}>
-            📅 Book
+            Book
           </button>
           <button className="btn btn-sm" onClick={() => setDrawer(true)}>
             Profile

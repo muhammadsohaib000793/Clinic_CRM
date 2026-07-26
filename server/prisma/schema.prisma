@@ -270,3 +270,19 @@ model Setting {
 
   @@map("settings")
 }
+
+// Access/audit trail for patient (PHI) data — compliance baseline (§5, §13).
+// Records who viewed or acted on a patient record, when, and what.
+model AuditLog {
+  id         String   @id @default(uuid())
+  agentId    String?  @map("agent_id")
+  agentName  String?  @map("agent_name")
+  action     String   // e.g. VIEW_CUSTOMER, UPDATE_CUSTOMER, BOOK_APPOINTMENT
+  customerId String?  @map("customer_id")
+  detail     String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([customerId])
+  @@map("audit_logs")
+}

@@ -45,7 +45,7 @@ export default function ConversationList({
             checked={filters.flagged}
             onChange={(e) => setFilters((f) => ({ ...f, flagged: e.target.checked }))}
           />{' '}
-          🚩 Flagged
+          Flagged
         </label>
       </div>
 

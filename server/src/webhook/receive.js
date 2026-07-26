@@ -2,7 +2,7 @@
 // the message (idempotently), updates the 24h-window anchor (lastInboundAt), and
 // fires the AI auto-responder when all agents are offline.
 import { prisma } from '../db/prisma.js';
-import { normalizeWebhook } from './normalize.js';
+import { normalizeWebhook, normalizeStatuses } from './normalize.js';
 import { emitAll } from '../realtime/emitter.js';
 import { EVENTS } from '../realtime/events.js';
 import { createLogger } from '../lib/logger.js';
@@ -83,6 +83,32 @@ async function ingestInbound(n) {
   return { conversationId: conversation.id, messageId: message.id };
 }
 
+// Meta status webhooks are at-least-once and NOT order-guaranteed, so a retried
+// or reordered "delivered" can arrive after "read". Only ever advance status, so
+// a late lower-rank event can't downgrade a message that was already read.
+const STATUS_RANK = { sent: 1, delivered: 2, read: 3, failed: 2 };
+
+async function applyStatuses(body) {
+  const statuses = normalizeStatuses(body);
+  for (const s of statuses) {
+    try {
+      const msg = await prisma.message.findUnique({
+        where: { externalMessageId: s.externalMessageId },
+        select: { id: true, conversationId: true, status: true },
+      });
+      if (!msg) continue; // unknown message id
+      const cur = STATUS_RANK[msg.status] || 0;
+      const next = STATUS_RANK[s.status] || 0;
+      if (next <= cur) continue; // never regress (e.g. read -> delivered)
+      await prisma.message.update({ where: { id: msg.id }, data: { status: s.status } });
+      emitAll(EVENTS.MESSAGE_STATUS, { conversationId: msg.conversationId, messageId: msg.id, status: s.status });
+    } catch (e) {
+      log.error('Status update failed', { error: e.message });
+    }
+  }
+  return statuses.length;
+}
+
 export async function handleWebhookPayload(body) {
   const normalized = normalizeWebhook(body);
   const results = [];
@@ -94,5 +120,7 @@ export async function handleWebhookPayload(body) {
       log.error('Ingest failed', { channel: n.channel, error: err.message });
     }
   }
+  // Delivery/read receipts (status-only webhook payloads).
+  await applyStatuses(body);
   return results;
 }

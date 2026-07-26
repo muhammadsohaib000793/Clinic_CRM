@@ -2,10 +2,14 @@
 import express from 'express';
 import cors from 'cors';
 import http from 'node:http';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { env, envReport } from './config/env.js';
 import { apiRouter } from './routes/index.js';
 import { webhookRouter } from './webhook/index.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
+import { securityHeaders } from './middleware/security.js';
 import { initSocket } from './realtime/socket.js';
 import { startRedflagScanner } from './services/redflag/scanner.js';
 import { prisma } from './db/prisma.js';
@@ -14,6 +18,12 @@ import { createLogger } from './lib/logger.js';
 const log = createLogger('server');
 const app = express();
 
+app.disable('x-powered-by');
+// Trust the first proxy hop (tunnel / reverse proxy in front of Node) so req.ip
+// resolves to the real client — otherwise the per-IP rate limiter would bucket
+// every client under the proxy's address (a shared bucket = auth-DoS risk).
+app.set('trust proxy', 1);
+app.use(securityHeaders);
 app.use(cors({ origin: env.clientOrigin, credentials: true }));
 // Capture the raw body so the webhook can verify Meta's HMAC signature.
 app.use(
@@ -28,6 +38,19 @@ app.use(
 app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 app.use('/webhook', webhookRouter);
 app.use('/api', apiRouter);
+
+// In production, serve the built React frontend from this same service, so one
+// Railway deployment hosts the API, the Meta webhook, and the UI together.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const clientDist = path.resolve(__dirname, '../../client/dist');
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/webhook') || req.path === '/health') return next();
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+  log.info('Serving built frontend from client/dist');
+}
 
 app.use(notFound);
 app.use(errorHandler);
