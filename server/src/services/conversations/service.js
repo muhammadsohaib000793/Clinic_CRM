@@ -159,6 +159,14 @@ export async function takeoverConversation(id, agent) {
   return getConversation(id);
 }
 
+export async function deleteConversation(id) {
+  const conv = await prisma.conversation.findUnique({ where: { id } });
+  if (!conv) throw new NotFoundError('Conversation not found');
+  await prisma.conversation.delete({ where: { id } }); // cascades messages; unlinks appointments
+  emitAll(EVENTS.CONVERSATION_UPDATED, { conversationId: id, deleted: true });
+  return { ok: true, id };
+}
+
 export async function setStatus(id, status) {
   const conv = await prisma.conversation.findUnique({ where: { id } });
   if (!conv) throw new NotFoundError('Conversation not found');

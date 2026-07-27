@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
 import { drawerIn } from '../animations/gsap.js';
 import { ChannelChip, OptInBadge } from './ui.jsx';
 import { formatDateTime } from '../lib/format.js';
 
-export default function CustomerDrawer({ customerId, onClose, onBook }) {
+export default function CustomerDrawer({ customerId, onClose, onBook, onDeleted }) {
   const ref = useRef();
+  const { isAdmin } = useAuth();
+  const toast = useToast();
   const [c, setC] = useState(null);
   const [notes, setNotes] = useState('');
 
@@ -23,6 +27,18 @@ export default function CustomerDrawer({ customerId, onClose, onBook }) {
   const toggleOptIn = async () => {
     const { customer } = await api.patch(`/customers/${customerId}`, { optedIn: !c.optedIn });
     setC((x) => ({ ...x, optedIn: customer.optedIn }));
+  };
+  const remove = async () => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(`Delete ${c.name} and all their conversations, messages, and appointments? This cannot be undone.`)) return;
+    try {
+      await api.del(`/customers/${customerId}`);
+      toast.success('Customer deleted');
+      onClose?.();
+      onDeleted?.();
+    } catch (e) {
+      toast.error('Delete failed', e.message);
+    }
   };
 
   return (
@@ -78,6 +94,12 @@ export default function CustomerDrawer({ customerId, onClose, onBook }) {
                 <span className="muted">· {cv.messages.length} messages</span>
               </div>
             ))}
+
+            {isAdmin && (
+              <button className="btn btn-sm btn-danger btn-block" style={{ marginTop: 20 }} onClick={remove}>
+                Delete customer
+              </button>
+            )}
           </>
         )}
       </div>

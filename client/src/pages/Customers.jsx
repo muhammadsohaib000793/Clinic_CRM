@@ -96,6 +96,10 @@ export default function Customers() {
             setDrawerId(null);
             setBookCustomer(c);
           }}
+          onDeleted={() => {
+            setDrawerId(null);
+            load(0, false);
+          }}
         />
       )}
       {bookCustomer && (

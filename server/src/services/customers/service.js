@@ -41,6 +41,16 @@ export async function getCustomer(id) {
   return c;
 }
 
+export async function deleteCustomer(id) {
+  try {
+    await prisma.customer.delete({ where: { id } }); // cascades conversations, messages, appts, identities
+    return { ok: true, id };
+  } catch (e) {
+    if (e.code === 'P2025') throw new NotFoundError('Customer not found');
+    throw e;
+  }
+}
+
 export async function updateCustomer(id, { name, notes, optedIn, contactInfo }) {
   const data = {};
   if (name !== undefined) data.name = name;

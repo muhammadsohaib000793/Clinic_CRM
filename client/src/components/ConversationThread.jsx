@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSocket, useSocketEvent } from '../context/SocketContext.jsx';
@@ -41,6 +42,7 @@ export default function ConversationThread({ conversationId, onChanged }) {
   const { agent, isAdmin } = useAuth();
   const { socket } = useSocket();
   const toast = useToast();
+  const navigate = useNavigate();
   const [conv, setConv] = useState(null);
   const [loading, setLoading] = useState(true);
   const [drawer, setDrawer] = useState(false);
@@ -139,6 +141,18 @@ export default function ConversationThread({ conversationId, onChanged }) {
     load();
     onChanged?.();
   };
+  const remove = async () => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm('Delete this conversation and all its messages? This cannot be undone.')) return;
+    try {
+      await api.del(`/conversations/${conv.id}`);
+      toast.success('Conversation deleted');
+      onChanged?.();
+      navigate('/inbox');
+    } catch (e) {
+      toast.error('Delete failed', e.message);
+    }
+  };
   const reassign = async (agentId) => {
     try {
       await api.post(`/conversations/${conv.id}/assign`, { agentId: agentId || null });
@@ -203,6 +217,11 @@ export default function ConversationThread({ conversationId, onChanged }) {
               Close
             </button>
           )}
+          {isAdmin && (
+            <button className="btn btn-sm btn-danger" onClick={remove}>
+              Delete
+            </button>
+          )}
         </div>
       </div>
 
@@ -227,6 +246,11 @@ export default function ConversationThread({ conversationId, onChanged }) {
           onBook={() => {
             setDrawer(false);
             setBooking(true);
+          }}
+          onDeleted={() => {
+            setDrawer(false);
+            onChanged?.();
+            navigate('/inbox');
           }}
         />
       )}

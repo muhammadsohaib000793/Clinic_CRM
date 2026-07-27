@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../lib/errors.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requireRole } from '../middleware/roleGuard.js';
 import * as customers from '../services/customers/service.js';
 import { logAudit } from '../services/audit/service.js';
 
@@ -41,5 +42,14 @@ customersRouter.patch(
       detail: Object.keys(req.body || {}).join(', '),
     });
     res.json({ customer });
+  }),
+);
+
+customersRouter.delete(
+  '/:id',
+  requireRole('ADMIN'),
+  asyncHandler(async (req, res) => {
+    logAudit({ agentId: req.agent.id, agentName: req.agent.name, action: 'DELETE_CUSTOMER', customerId: req.params.id });
+    res.json(await customers.deleteCustomer(req.params.id));
   }),
 );

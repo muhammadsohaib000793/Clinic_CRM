@@ -572,3 +572,29 @@ test('AUDIT-01 viewing a patient is logged; admin reads it; agent forbidden', as
   const forbidden = await req('/audit', { token: sofiaToken });
   assert.equal(forbidden.status, 403);
 });
+
+test('DEL-01 admin deletes a conversation; agent forbidden', async () => {
+  const waId = newWaId();
+  await req('/webhook', { method: 'POST', body: waPayload({ waId, name: 'Delete Me', text: 'hi' }) });
+  const conv = await waitFor(async () => findConversationByName(adminToken, 'Delete Me'));
+  assert.ok(conv);
+  const forbidden = await req(`/conversations/${conv.id}`, { method: 'DELETE', token: sofiaToken });
+  assert.equal(forbidden.status, 403);
+  const del = await req(`/conversations/${conv.id}`, { method: 'DELETE', token: adminToken });
+  assert.equal(del.status, 200);
+  const after = await req(`/conversations/${conv.id}`, { token: adminToken });
+  assert.equal(after.status, 404);
+});
+
+test('DEL-02 admin deletes a customer (cascade); agent forbidden', async () => {
+  const waId = newWaId();
+  await req('/webhook', { method: 'POST', body: waPayload({ waId, name: 'Delete Cust', text: 'hi' }) });
+  const conv = await waitFor(async () => findConversationByName(adminToken, 'Delete Cust'));
+  const custId = (await req(`/conversations/${conv.id}`, { token: adminToken })).data.conversation.customer.id;
+  const forbidden = await req(`/customers/${custId}`, { method: 'DELETE', token: sofiaToken });
+  assert.equal(forbidden.status, 403);
+  const del = await req(`/customers/${custId}`, { method: 'DELETE', token: adminToken });
+  assert.equal(del.status, 200);
+  const after = await req(`/customers/${custId}`, { token: adminToken });
+  assert.equal(after.status, 404);
+});

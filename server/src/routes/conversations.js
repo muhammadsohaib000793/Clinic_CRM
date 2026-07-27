@@ -95,3 +95,11 @@ conversationsRouter.post(
     res.json({ conversation: await convo.setStatus(req.params.id, 'OPEN') });
   }),
 );
+
+conversationsRouter.delete(
+  '/:id',
+  requireRole('ADMIN'),
+  asyncHandler(async (req, res) => {
+    res.json(await convo.deleteConversation(req.params.id));
+  }),
+);
