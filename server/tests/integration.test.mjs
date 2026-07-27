@@ -491,6 +491,18 @@ test('TPL-01 templates list includes seeded templates', async () => {
   assert.ok(names.includes('appointment_reminder'));
   assert.ok(names.includes('reengage_followup'));
 });
+test('TPL-02 admin can create/update/delete a template; agent forbidden', async () => {
+  const name = `test_tpl_${uniq()}`;
+  const forbidden = await req('/templates', { method: 'POST', token: sofiaToken, body: { name, body: 'x' } });
+  assert.equal(forbidden.status, 403);
+  const created = await req('/templates', { method: 'POST', token: adminToken, body: { name, body: 'Hi {{1}}', status: 'APPROVED' } });
+  assert.equal(created.status, 201);
+  const id = created.data.template.id;
+  const upd = await req(`/templates/${id}`, { method: 'PATCH', token: adminToken, body: { status: 'PENDING' } });
+  assert.equal(upd.data.template.status, 'PENDING');
+  const del = await req(`/templates/${id}`, { method: 'DELETE', token: adminToken });
+  assert.equal(del.status, 200);
+});
 
 // ------------------------ NEW FEATURES (gap closing) ------------------------
 test('AIBOOK-01 AI books an appointment from a chat when all agents offline', async (t) => {

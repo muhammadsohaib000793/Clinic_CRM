@@ -4,19 +4,17 @@ import { api } from '../api/client.js';
 import { useToast } from '../context/ToastContext.jsx';
 import DoctorManager from '../components/DoctorManager.jsx';
 import AuditLogView from '../components/AuditLogView.jsx';
+import TemplateManager from '../components/TemplateManager.jsx';
 
 export default function Admin() {
   const toast = useToast();
   const [agents, setAgents] = useState([]);
-  const [templates, setTemplates] = useState([]);
   const [threshold, setThreshold] = useState(15);
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'AGENT' });
 
   const load = async () => {
     const { agents } = await api.get('/agents');
     setAgents(agents);
-    const { templates } = await api.get('/templates');
-    setTemplates(templates);
     const s = await api.get('/settings');
     setThreshold(s.redflagThresholdMinutes);
   };
@@ -137,47 +135,7 @@ export default function Admin() {
             </div>
           </div>
 
-          <div className="card card-pad">
-            <h3 style={{ marginTop: 0 }}>WhatsApp message templates</h3>
-            <p className="muted">
-              Approved templates are required to re-engage outside the 24h window (§9A).
-            </p>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Channel</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {templates.map((t) => (
-                  <tr key={t.id}>
-                    <td>
-                      <b>{t.name}</b>
-                      <div className="muted" style={{ fontSize: 12 }}>
-                        {t.body}
-                      </div>
-                    </td>
-                    <td>{t.channel}</td>
-                    <td>
-                      <span
-                        className={`badge ${
-                          t.status === 'APPROVED'
-                            ? 'badge-success'
-                            : t.status === 'REJECTED'
-                              ? 'badge-error'
-                              : 'badge-warning'
-                        }`}
-                      >
-                        {t.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <TemplateManager />
         </div>
       </div>
 
