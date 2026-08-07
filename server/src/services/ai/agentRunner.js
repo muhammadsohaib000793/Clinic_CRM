@@ -59,6 +59,12 @@ export async function maybeAutoRespond(conversationId) {
         conversationId,
         customerId: conversation.customer.id,
         text: last.content,
+        // Earlier patient turns, oldest first — lets a booking split across
+        // messages ("dental cleaning" … "Monday at 10") still complete.
+        priorTexts: ordered
+          .slice(0, -1)
+          .filter((m) => m.senderType === 'CUSTOMER')
+          .map((m) => m.content),
       });
       if (booking.status !== 'no_intent') {
         replyText = bookingReply({ result: booking, customerName: conversation.customer.name });

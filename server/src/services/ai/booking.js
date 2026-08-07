@@ -123,13 +123,38 @@ async function resolveDoctor(text) {
 }
 
 // Returns { status, doctor?, appointment?, when?, date?, missing? }.
-export async function attemptAiBooking({ conversationId, customerId, text, now = new Date() }) {
+// `priorTexts` = the patient's earlier messages in this conversation, oldest
+// first. A booking is usually split across turns ("dental cleaning" … "Monday
+// at 10"), so when the newest message alone is incomplete we fill the gaps from
+// what they already told us. Only messages that themselves carried a booking
+// signal are consulted, so unrelated chatter can never supply a doctor or time.
+export async function attemptAiBooking({
+  conversationId,
+  customerId,
+  text,
+  priorTexts = [],
+  now = new Date(),
+}) {
   if (!hasBookingSignal(text)) return { status: 'no_intent' };
 
-  const doctor = await resolveDoctor(text);
+  // Newest first: the most recent thing they said wins.
+  const context = priorTexts.filter((t) => t && hasBookingSignal(t)).reverse();
+
+  let doctor = await resolveDoctor(text);
+  for (const prior of context) {
+    if (doctor) break;
+    doctor = await resolveDoctor(prior);
+  }
   if (!doctor) return { status: 'no_doctor' };
 
-  const { date, time } = parseWhen(text, now);
+  const parsed = parseWhen(text, now);
+  let { date, time } = parsed;
+  for (const prior of context) {
+    if (date && time) break;
+    const p = parseWhen(prior, now);
+    if (!date) date = p.date;
+    if (!time) time = p.time;
+  }
   const missing = [];
   if (!date) missing.push('day');
   if (!time) missing.push('time');
