@@ -77,6 +77,9 @@ export async function bookAppointment({
   durationMinutes = 30,
   reason,
   agentId,
+  serviceId,
+  source,
+  notes,
 }) {
   if (!doctorId || !customerId || !scheduledAt) {
     throw new ValidationError('doctorId, customerId and scheduledAt are required');
@@ -90,6 +93,12 @@ export async function bookAppointment({
   if (!doctor) throw new NotFoundError('Doctor not found');
   const customer = await prisma.customer.findUnique({ where: { id: customerId } });
   if (!customer) throw new NotFoundError('Customer not found');
+
+  // Optional service descriptor (supplies price/commission downstream in the POS).
+  if (serviceId) {
+    const service = await prisma.service.findUnique({ where: { id: serviceId } });
+    if (!service) throw new NotFoundError('Service not found');
+  }
 
   if (!withinAvailability(doctor, start, end)) {
     throw new ConflictError("Requested time is outside the doctor's availability", {
@@ -124,10 +133,14 @@ export async function bookAppointment({
           reason: reason || null,
           createdByAgentId: agentId || null,
           status: 'CONFIRMED',
+          serviceId: serviceId || null,
+          source: source || 'ADMIN',
+          notes: notes || null,
         },
         include: {
           doctor: { select: { id: true, name: true } },
           customer: { select: { id: true, name: true } },
+          service: { select: { id: true, name: true, color: true } },
         },
       });
     },

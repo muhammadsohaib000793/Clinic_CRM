@@ -12,6 +12,8 @@ import { notFound, errorHandler } from './middleware/errorHandler.js';
 import { securityHeaders } from './middleware/security.js';
 import { initSocket } from './realtime/socket.js';
 import { startRedflagScanner } from './services/redflag/scanner.js';
+import { startReminderScheduler } from './services/reminders/scheduler.js';
+import { startLowStockWatcher } from './services/inventory/service.js';
 import { prisma } from './db/prisma.js';
 import { createLogger } from './lib/logger.js';
 
@@ -25,6 +27,12 @@ app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(securityHeaders);
 app.use(cors({ origin: env.clientOrigin, credentials: true }));
+// Clinical attachments are posted as base64 JSON, which inflates the payload by
+// ~33% — a 5 MB file needs ~6.7 MB of body. Give that ONE path a larger limit
+// while the global limit below stays tight for the public webhook surface.
+// body-parser sets req._body, so the global parser skips what this one handled.
+app.use('/api/clinical', express.json({ limit: '9mb' }));
+
 // Capture the raw body so the webhook can verify Meta's HMAC signature.
 app.use(
   express.json({
@@ -58,6 +66,8 @@ app.use(errorHandler);
 const server = http.createServer(app);
 initSocket(server);
 startRedflagScanner();
+startReminderScheduler(); // appointment reminders (WhatsApp template / email / SMS)
+startLowStockWatcher(); // hourly inventory low-stock alert
 
 // Reset stale presence on boot: no sockets are connected yet, so every agent is
 // offline. Prevents a prior crash from leaving agents "ONLINE" and suppressing

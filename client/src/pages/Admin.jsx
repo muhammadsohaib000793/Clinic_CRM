@@ -5,6 +5,8 @@ import { useToast } from '../context/ToastContext.jsx';
 import DoctorManager from '../components/DoctorManager.jsx';
 import AuditLogView from '../components/AuditLogView.jsx';
 import TemplateManager from '../components/TemplateManager.jsx';
+import ServiceManager from '../components/ServiceManager.jsx';
+import ReminderSettings from '../components/ReminderSettings.jsx';
 
 export default function Admin() {
   const toast = useToast();
@@ -140,7 +142,15 @@ export default function Admin() {
       </div>
 
       <div style={{ marginTop: 24 }}>
+        <ServiceManager />
+      </div>
+
+      <div style={{ marginTop: 24 }}>
         <DoctorManager />
+      </div>
+
+      <div style={{ marginTop: 24 }}>
+        <ReminderSettings />
       </div>
 
       <div style={{ marginTop: 24 }}>

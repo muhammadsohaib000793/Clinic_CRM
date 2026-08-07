@@ -3,7 +3,18 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSocket, useSocketEvent } from '../context/SocketContext.jsx';
 import { api } from '../api/client.js';
-import { InboxIcon, UsersIcon, CalendarIcon, ChartIcon, SettingsIcon } from './icons.jsx';
+import {
+  InboxIcon,
+  UsersIcon,
+  CalendarIcon,
+  ChartIcon,
+  SettingsIcon,
+  GridIcon,
+  CardIcon,
+  BoxIcon,
+  MegaphoneIcon,
+  ReportIcon,
+} from './icons.jsx';
 
 export default function Layout({ children, title }) {
   const { agent, logout, isAdmin } = useAuth();
@@ -60,12 +71,36 @@ export default function Layout({ children, title }) {
             <UsersIcon />
             <span className="label">Customers</span>
           </NavLink>
+          <NavLink to="/calendar" className="nav-link">
+            <GridIcon />
+            <span className="label">Calendar</span>
+          </NavLink>
           <NavLink to="/appointments" className="nav-link">
             <CalendarIcon />
             <span className="label">Appointments</span>
           </NavLink>
+
+          <div className="nav-section">Business</div>
+          <NavLink to="/pos" className="nav-link">
+            <CardIcon />
+            <span className="label">Point of sale</span>
+          </NavLink>
+          <NavLink to="/inventory" className="nav-link">
+            <BoxIcon />
+            <span className="label">Inventory</span>
+          </NavLink>
           {isAdmin && (
             <>
+              <NavLink to="/marketing" className="nav-link">
+                <MegaphoneIcon />
+                <span className="label">Marketing</span>
+              </NavLink>
+              <NavLink to="/reports" className="nav-link">
+                <ReportIcon />
+                <span className="label">Reports</span>
+              </NavLink>
+
+              <div className="nav-section">Manage</div>
               <NavLink to="/dashboard" className="nav-link">
                 <ChartIcon />
                 <span className="label">Dashboard</span>

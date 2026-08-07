@@ -45,3 +45,38 @@ export const SettingsIcon = (p) => (
     <path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
   </svg>
 );
+
+export const GridIcon = (p) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="4" width="18" height="17" rx="2" />
+    <path d="M3 9h18M8 4v17M13 4v17M18 4v17M3 15h18" />
+  </svg>
+);
+
+export const CardIcon = (p) => (
+  <svg {...base} {...p}>
+    <rect x="2" y="5" width="20" height="14" rx="2" />
+    <path d="M2 10h20M6 15h4" />
+  </svg>
+);
+
+export const BoxIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M21 8v8a2 2 0 0 1-1 1.73l-7 4a2 2 0 0 1-2 0l-7-4A2 2 0 0 1 3 16V8a2 2 0 0 1 1-1.73l7-4a2 2 0 0 1 2 0l7 4A2 2 0 0 1 21 8z" />
+    <path d="m3.3 7 8.7 5 8.7-5M12 22V12" />
+  </svg>
+);
+
+export const MegaphoneIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z" />
+    <path d="M16 8a5 5 0 0 1 0 8M19 5a9 9 0 0 1 0 14" />
+  </svg>
+);
+
+export const ReportIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path d="M14 2v6h6M8 17v-4M12 17v-6M16 17v-2" />
+  </svg>
+);

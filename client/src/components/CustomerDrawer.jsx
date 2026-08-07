@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { drawerIn } from '../animations/gsap.js';
 import { ChannelChip, OptInBadge } from './ui.jsx';
+import ClinicalRecords from './ClinicalRecords.jsx';
 import { formatDateTime } from '../lib/format.js';
 
 export default function CustomerDrawer({ customerId, onClose, onBook, onDeleted }) {
@@ -86,6 +87,10 @@ export default function CustomerDrawer({ customerId, onClose, onBook, onDeleted 
             <button className="btn btn-primary btn-block" style={{ marginTop: 12 }} onClick={onBook}>
               Book appointment
             </button>
+
+            <div style={{ marginTop: 20 }}>
+              <ClinicalRecords customerId={customerId} />
+            </div>
 
             <h3 style={{ marginTop: 16 }}>Conversation history</h3>
             {c.conversations.map((cv) => (

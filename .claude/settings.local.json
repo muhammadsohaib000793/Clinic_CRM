@@ -2,7 +2,48 @@
   "permissions": {
     "allow": [
       "PowerShell(Write-Output \"node: $\\(node -v 2>$null\\)\"; Write-Output \"npm: $\\(npm -v 2>$null\\)\"; Write-Output \"docker: $\\(docker -v 2>$null\\)\"; Write-Output \"psql: $\\(\\(Get-Command psql -ErrorAction SilentlyContinue\\).Source\\)\")",
-      "PowerShell(npm --workspace client run dev 2>&1)"
+      "PowerShell(npm --workspace client run dev 2>&1)",
+      "WebFetch(domain:agendapro.com)",
+      "WebSearch",
+      "Bash(cat \"c:/Users/DEV/Desktop/Proj/CRM/CRM Project/server/package.json\"; echo \"---\"; cat \"c:/Users/DEV/Desktop/Proj/CRM/CRM Project/client/package.json\")",
+      "Read(//c/Users/DEV/Desktop/Proj/CRM/CRM Project/client/**)",
+      "Bash(python -c ' *)",
+      "Read(//c/Users/DEV/Desktop/Proj/CRM/CRM Project/**)",
+      "Bash(curl -sL -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 Chrome/126.0 Safari/537.36\" https://app.agendapro.com/ -o app.html -w \"%{http_code} %{size_download}\\\\n\")",
+      "Bash(curl -sL -A \"Mozilla/5.0\" https://app.agendapro.com/microfronts.json -o mf.json -w \"%{http_code}\\\\n\")",
+      "Bash(curl -sL -A \"Mozilla/5.0\" \"https://app.agendapro.com/root-config-frontend/v26.07.28.035816/agendapro-root-config.js\" -o root.js -w \"root %{http_code} %{size_download}\\\\n\")",
+      "Bash(curl -sL -A \"Mozilla/5.0\" \"https://app.agendapro.com/business-base-frontend/v26.07.24.144451/agendapro-business-base.js\" -o base.js -w \"base %{http_code} %{size_download}\\\\n\")",
+      "Bash(curl -sL -A \"Mozilla/5.0\" \"https://app.agendapro.com/business-clients-frontend/v26.07.30.152605/agendapro-business-clients.js\" -o clients.js -w \"clients %{http_code} %{size_download}\\\\n\")",
+      "Bash(curl -sL -A \"Mozilla/5.0\" \"https://app.agendapro.com/business-base-frontend/v26.07.24.144451/assets/agendapro-business-base-Bz6DDsH4.js\" -o baseassets.js -w \"baseassets %{http_code} %{size_download}\\\\n\")",
+      "Bash(python probe.py clients.js baseassets.js root.js)",
+      "Bash(python nav.py)",
+      "Bash(python nav2.py)",
+      "Bash(python nav3.py)",
+      "Bash(python comp.py)",
+      "Bash(git status *)",
+      "Bash(grep -oE '^\\\\.[a-zA-Z0-9_-]+|^\\\\.[a-zA-Z0-9_-]+[, ]|\\\\.[a-zA-Z0-9_-]+\\(?=[,{ ]\\)' index.css)",
+      "Read(//c/Users/Dev/.claude/projects/c--Users-Dev-Desktop-Proj-CRM-CRM-Project/a577cd3d-4154-4651-bf39-572c069a2da4/subagents/workflows/wf_1c32e802-1b1/**)",
+      "Bash(exit 1)",
+      "Bash(node -e ' *)",
+      "Bash(node --input-type=module -e \"1\")",
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('c:/Users/DEV/Desktop/Proj/CRM/CRM Project/client/src/pages/Reports.jsx','utf8'\\); let b=0,p=0,c=0; for\\(const ch of s\\){if\\(ch==='\\('\\)p++;if\\(ch==='\\)'\\)p--;if\\(ch==='{'\\)b++;if\\(ch==='}'\\)b--;if\\(ch==='['\\)c++;if\\(ch===']'\\)c--;} console.log\\('paren',p,'brace',b,'bracket',c\\);\")",
+      "Bash(python -)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project\\client\\src\\components",
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project\\client\\src\\pages",
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project\\server\\src\\services\\inventory",
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project\\server\\src\\services\\billing",
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project\\server\\src\\services\\marketing",
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project\\server\\src\\routes",
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project\\server\\src\\services\\reports",
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project\\server\\src",
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project\\client\\src",
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project\\server\\src\\services\\appointments",
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project\\server\\src\\services\\booking",
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project\\client\\src\\theme",
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project\\server\\tests",
+      "c:\\Users\\DEV\\Desktop\\Proj\\CRM\\CRM Project"
     ]
   }
 }

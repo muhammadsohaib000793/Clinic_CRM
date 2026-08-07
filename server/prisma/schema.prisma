@@ -71,6 +71,15 @@ enum AgentStatus {
 enum AppointmentStatus {
   CONFIRMED
   CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+// How the appointment was created (powers the "online bookings" report).
+enum BookingSource {
+  ADMIN
+  AI
+  ONLINE
 }
 
 enum TemplateStatus {
@@ -95,6 +104,10 @@ model Customer {
   id          String   @id @default(uuid())
   name        String
   contactInfo Json?    @map("contact_info") // display contact details (phone, handles)
+  // Explicit columns (ADDITION) — the public booking page collects these and
+  // email/SMS reminders + marketing campaigns need them queryable.
+  phone       String?
+  email       String?
   notes       String?
   optedIn     Boolean  @default(false) @map("opted_in") // §9A: opt-in gate
   optInAt     DateTime? @map("opt_in_at")
@@ -105,6 +118,15 @@ model Customer {
   appointments  Appointment[]
   identities    ChannelIdentity[]
 
+  clinicalRecords     ClinicalRecord[]
+  payments            Payment[]
+  loyaltyAccount      LoyaltyAccount?
+  giftCards           GiftCard[]
+  campaignRecipients  CampaignRecipient[]
+  surveyResponses     SurveyResponse[]
+
+  @@index([phone])
+  @@index([email])
   @@map("customers")
 }
 
@@ -195,10 +217,18 @@ model Doctor {
   // Weekly availability, e.g.:
   // { "slotMinutes": 30, "week": { "mon": [{"start":"09:00","end":"17:00"}], ... } }
   availability Json?
+  // ADDITIONS: calendar colour, public-booking visibility, commission %.
+  color          String?
+  active         Boolean  @default(true)
+  bookableOnline Boolean  @default(true) @map("bookable_online")
+  commissionRate Decimal  @default(0) @db.Decimal(5, 2) @map("commission_rate")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   appointments Appointment[]
+  services     DoctorService[]
+  commissions  Commission[]
+  paymentItems PaymentItem[]
 
   @@map("doctors")
 }
@@ -219,11 +249,22 @@ model Appointment {
   status          AppointmentStatus @default(CONFIRMED)
   reason          String?
   createdByAgentId String?          @map("created_by_agent_id")
+  // ADDITIONS: which service was booked, and where the booking came from.
+  serviceId       String?           @map("service_id")
+  service         Service?          @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  source          BookingSource     @default(ADMIN)
+  notes           String?
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
+  clinicalRecords ClinicalRecord[]
+  payments        Payment[]
+  reminders       ReminderLog[]
+  surveyResponses SurveyResponse[]
+
   @@index([doctorId, scheduledAt])
   @@index([customerId])
+  @@index([scheduledAt, status])
   @@map("appointments")
 }
 
@@ -285,4 +326,459 @@ model AuditLog {
   @@index([createdAt])
   @@index([customerId])
   @@map("audit_logs")
+}
+
+// =============================================================================
+//  CLINIC SUITE ADDITIONS (AgendaPro-parity modules)
+// -----------------------------------------------------------------------------
+//  Services catalog, public online booking, clinical records (EHR), payments /
+//  POS / cash / commissions, inventory, marketing (campaigns, loyalty,
+//  giftcards, surveys) and the scheduled-reminder engine.
+//  Appointments stay DOCTOR-CENTRIC (doctorId is still required); the service is
+//  an optional descriptor that supplies duration + price.
+// =============================================================================
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  ONLINE_LINK
+  GIFT_CARD
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  VOID
+}
+
+enum PaymentItemKind {
+  SERVICE
+  PRODUCT
+  OTHER
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum CashMovementType {
+  SALE
+  REFUND
+  CASH_IN
+  CASH_OUT
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUST
+  SALE
+}
+
+enum CommissionStatus {
+  PENDING
+  PAID
+}
+
+enum CampaignChannel {
+  EMAIL
+  WHATSAPP
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+}
+
+enum RecipientStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum GiftCardStatus {
+  ACTIVE
+  REDEEMED
+  EXPIRED
+  CANCELLED
+}
+
+enum ReminderStatus {
+  SENT
+  FAILED
+  SKIPPED
+}
+
+// ------------------------------ Services catalog -----------------------------
+
+model Service {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  durationMinutes Int      @default(30) @map("duration_minutes")
+  price           Decimal  @default(0) @db.Decimal(12, 2)
+  category        String?
+  color           String?
+  active          Boolean  @default(true)
+  bookableOnline  Boolean  @default(true) @map("bookable_online")
+  commissionRate  Decimal  @default(0) @db.Decimal(5, 2) @map("commission_rate")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  doctors      DoctorService[]
+  appointments Appointment[]
+  paymentItems PaymentItem[]
+
+  @@index([active])
+  @@map("services")
+}
+
+// Which professionals perform which services (drives the booking page step 2).
+model DoctorService {
+  id        String  @id @default(uuid())
+  doctorId  String  @map("doctor_id")
+  doctor    Doctor  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  serviceId String  @map("service_id")
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, serviceId])
+  @@index([serviceId])
+  @@map("doctor_services")
+}
+
+// ---------------------------- Clinical records (EHR) -------------------------
+
+model ClinicalRecord {
+  id            String       @id @default(uuid())
+  customerId    String       @map("customer_id")
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  appointmentId String?      @map("appointment_id")
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  authorAgentId String?      @map("author_agent_id")
+  authorName    String?      @map("author_name")
+  visitDate     DateTime     @default(now()) @map("visit_date")
+  reason        String?
+  symptoms      String?
+  diagnosis     String?
+  treatment     String?
+  prescription  String?
+  notes         String?
+  vitals        Json? // { bloodPressure, heartRate, temperature, weight, height }
+  followUpAt    DateTime?    @map("follow_up_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  attachments ClinicalAttachment[]
+
+  @@index([customerId, visitDate])
+  @@map("clinical_records")
+}
+
+// Attachments are stored as bytes in Postgres so the platform stays
+// dependency-free (no S3/bucket required on Railway). Size-capped by the API.
+model ClinicalAttachment {
+  id         String         @id @default(uuid())
+  recordId   String         @map("record_id")
+  record     ClinicalRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  filename   String
+  mimeType   String         @map("mime_type")
+  sizeBytes  Int            @map("size_bytes")
+  data       Bytes
+  uploadedAt DateTime       @default(now()) @map("uploaded_at")
+
+  @@index([recordId])
+  @@map("clinical_attachments")
+}
+
+// ------------------------- Payments / POS / cash / commissions ---------------
+
+model Payment {
+  id            String        @id @default(uuid())
+  receiptNumber Int           @unique @default(autoincrement()) @map("receipt_number")
+  customerId    String?       @map("customer_id")
+  customer      Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  appointmentId String?       @map("appointment_id")
+  appointment   Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  cashSessionId String?       @map("cash_session_id")
+  cashSession   CashSession?  @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  subtotal      Decimal       @default(0) @db.Decimal(12, 2)
+  discount      Decimal       @default(0) @db.Decimal(12, 2)
+  tax           Decimal       @default(0) @db.Decimal(12, 2)
+  total         Decimal       @default(0) @db.Decimal(12, 2)
+  method        PaymentMethod @default(CASH)
+  status        PaymentStatus @default(PAID)
+  reference     String? // gateway/card reference
+  publicToken   String?       @unique @map("public_token") // payment-link token
+  notes         String?
+  paidAt        DateTime?     @map("paid_at")
+  createdByAgentId String?    @map("created_by_agent_id")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  items         PaymentItem[]
+  commissions   Commission[]
+  cashMovements CashMovement[]
+  giftCardTx    GiftCardTransaction[]
+  loyaltyTx     LoyaltyTransaction[]
+  stockMoves    StockMovement[]
+
+  @@index([createdAt])
+  @@index([status, paidAt])
+  @@map("payments")
+}
+
+model PaymentItem {
+  id          String          @id @default(uuid())
+  paymentId   String          @map("payment_id")
+  payment     Payment         @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  kind        PaymentItemKind @default(SERVICE)
+  serviceId   String?         @map("service_id")
+  service     Service?        @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  productId   String?         @map("product_id")
+  product     Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  doctorId    String?         @map("doctor_id") // who performed it (commission target)
+  doctor      Doctor?         @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  description String
+  quantity    Int             @default(1)
+  unitPrice   Decimal         @default(0) @db.Decimal(12, 2) @map("unit_price")
+  total       Decimal         @default(0) @db.Decimal(12, 2)
+
+  commissions Commission[]
+
+  @@index([paymentId])
+  @@map("payment_items")
+}
+
+model CashSession {
+  id             String            @id @default(uuid())
+  openedByAgentId String?          @map("opened_by_agent_id")
+  openedByName   String?           @map("opened_by_name")
+  openedAt       DateTime          @default(now()) @map("opened_at")
+  openingFloat   Decimal           @default(0) @db.Decimal(12, 2) @map("opening_float")
+  closedAt       DateTime?         @map("closed_at")
+  closingCount   Decimal?          @db.Decimal(12, 2) @map("closing_count")   // counted cash
+  expectedTotal  Decimal?          @db.Decimal(12, 2) @map("expected_total")  // float + cash sales
+  difference     Decimal?          @db.Decimal(12, 2)
+  status         CashSessionStatus @default(OPEN)
+  notes          String?
+
+  movements CashMovement[]
+  payments  Payment[]
+
+  @@index([status])
+  @@map("cash_sessions")
+}
+
+model CashMovement {
+  id        String           @id @default(uuid())
+  sessionId String           @map("session_id")
+  session   CashSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  type      CashMovementType
+  amount    Decimal          @db.Decimal(12, 2)
+  reason    String?
+  paymentId String?          @map("payment_id")
+  payment   Payment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  agentId   String?          @map("agent_id")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  @@index([sessionId])
+  @@map("cash_movements")
+}
+
+model Commission {
+  id            String           @id @default(uuid())
+  doctorId      String           @map("doctor_id")
+  doctor        Doctor           @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  paymentId     String           @map("payment_id")
+  payment       Payment          @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  paymentItemId String?          @map("payment_item_id")
+  paymentItem   PaymentItem?     @relation(fields: [paymentItemId], references: [id], onDelete: SetNull)
+  baseAmount    Decimal          @db.Decimal(12, 2) @map("base_amount")
+  rate          Decimal          @db.Decimal(5, 2) // percent
+  amount        Decimal          @db.Decimal(12, 2)
+  status        CommissionStatus @default(PENDING)
+  paidAt        DateTime?        @map("paid_at")
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  @@index([doctorId, status])
+  @@map("commissions")
+}
+
+// --------------------------------- Inventory ---------------------------------
+
+model Product {
+  id                String   @id @default(uuid())
+  sku               String?  @unique
+  name              String
+  description       String?
+  category          String?
+  price             Decimal  @default(0) @db.Decimal(12, 2)
+  cost              Decimal  @default(0) @db.Decimal(12, 2)
+  stock             Int      @default(0)
+  lowStockThreshold Int      @default(5) @map("low_stock_threshold")
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  movements    StockMovement[]
+  paymentItems PaymentItem[]
+
+  @@index([active])
+  @@map("products")
+}
+
+model StockMovement {
+  id        String            @id @default(uuid())
+  productId String            @map("product_id")
+  product   Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type      StockMovementType
+  quantity  Int // always positive; `type` gives the direction
+  reason    String?
+  agentId   String?           @map("agent_id")
+  paymentId String?           @map("payment_id")
+  payment   Payment?          @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  @@index([productId, createdAt])
+  @@map("stock_movements")
+}
+
+// ----------------------- Marketing: campaigns / loyalty / giftcards ----------
+
+model Campaign {
+  id               String          @id @default(uuid())
+  name             String
+  channel          CampaignChannel @default(EMAIL)
+  subject          String?
+  body             String
+  templateName     String?         @map("template_name") // WhatsApp: approved template (§9A)
+  status           CampaignStatus  @default(DRAFT)
+  scheduledAt      DateTime?       @map("scheduled_at")
+  sentAt           DateTime?       @map("sent_at")
+  audienceFilter   Json?           @map("audience_filter") // { optedInOnly, hasEmail, tag }
+  createdByAgentId String?         @map("created_by_agent_id")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  recipients CampaignRecipient[]
+
+  @@index([status])
+  @@map("campaigns")
+}
+
+model CampaignRecipient {
+  id         String          @id @default(uuid())
+  campaignId String          @map("campaign_id")
+  campaign   Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customerId String          @map("customer_id")
+  customer   Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  status     RecipientStatus @default(PENDING)
+  error      String?
+  sentAt     DateTime?       @map("sent_at")
+
+  @@unique([campaignId, customerId])
+  @@map("campaign_recipients")
+}
+
+model LoyaltyAccount {
+  id         String   @id @default(uuid())
+  customerId String   @unique @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  points     Int      @default(0)
+  tier       String   @default("BRONZE")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  transactions LoyaltyTransaction[]
+
+  @@map("loyalty_accounts")
+}
+
+model LoyaltyTransaction {
+  id        String         @id @default(uuid())
+  accountId String         @map("account_id")
+  account   LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  points    Int // positive = earned, negative = redeemed
+  reason    String
+  paymentId String?        @map("payment_id")
+  payment   Payment?       @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  @@index([accountId])
+  @@map("loyalty_transactions")
+}
+
+model GiftCard {
+  id            String         @id @default(uuid())
+  code          String         @unique
+  initialAmount Decimal        @db.Decimal(12, 2) @map("initial_amount")
+  balance       Decimal        @db.Decimal(12, 2)
+  status        GiftCardStatus @default(ACTIVE)
+  customerId    String?        @map("customer_id")
+  customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  note          String?
+  expiresAt     DateTime?      @map("expires_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  transactions GiftCardTransaction[]
+
+  @@map("gift_cards")
+}
+
+model GiftCardTransaction {
+  id         String   @id @default(uuid())
+  giftCardId String   @map("gift_card_id")
+  giftCard   GiftCard @relation(fields: [giftCardId], references: [id], onDelete: Cascade)
+  amount     Decimal  @db.Decimal(12, 2) // negative = redeemed
+  paymentId  String?  @map("payment_id")
+  payment    Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([giftCardId])
+  @@map("gift_card_transactions")
+}
+
+// Satisfaction survey — one row per invite, answered via a public token link.
+model SurveyResponse {
+  id            String       @id @default(uuid())
+  token         String       @unique
+  customerId    String?      @map("customer_id")
+  customer      Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  appointmentId String?      @map("appointment_id")
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  rating        Int? // 1..5
+  comment       String?
+  sentAt        DateTime     @default(now()) @map("sent_at")
+  respondedAt   DateTime?    @map("responded_at")
+
+  @@index([respondedAt])
+  @@map("survey_responses")
+}
+
+// ---------------------------- Scheduled reminders ----------------------------
+// One row per (appointment, offset, channel) so a reminder can never be sent
+// twice — the unique constraint is the idempotency guard for the cron.
+model ReminderLog {
+  id            String         @id @default(uuid())
+  appointmentId String         @map("appointment_id")
+  appointment   Appointment    @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  offsetHours   Int            @map("offset_hours")
+  channel       String // WHATSAPP | EMAIL | SMS
+  status        ReminderStatus
+  detail        String?
+  sentAt        DateTime       @default(now()) @map("sent_at")
+
+  @@unique([appointmentId, offsetHours, channel])
+  @@index([sentAt])
+  @@map("reminder_logs")
 }

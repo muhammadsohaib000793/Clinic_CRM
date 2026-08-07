@@ -43,17 +43,51 @@ async function main() {
     week: { mon: weekday, tue: weekday, wed: weekday, thu: weekday, fri: weekday, sat: [], sun: [] },
   };
   const doctorDefs = [
-    ['Dr. Ana Ruiz', 'Dermatology'],
-    ['Dr. Luis Gómez', 'General Medicine'],
-    ['Dr. María Torres', 'Dentistry'],
+    ['Dr. Ana Ruiz', 'Dermatology', '#7c3aed'],
+    ['Dr. Luis Gómez', 'General Medicine', '#0ea5e9'],
+    ['Dr. María Torres', 'Dentistry', '#f59e0b'],
   ];
   const doctors = [];
-  for (const [name, specialty] of doctorDefs) {
+  for (const [name, specialty, color] of doctorDefs) {
     let doc = await prisma.doctor.findFirst({ where: { name } });
     if (!doc) {
-      doc = await prisma.doctor.create({ data: { name, specialty, availability: fullWeek } });
+      doc = await prisma.doctor.create({
+        data: { name, specialty, color, availability: fullWeek, commissionRate: 10 },
+      });
     }
     doctors.push(doc);
+  }
+
+  // -- Services catalog -------------------------------------------------------
+  // Seeded in every environment (not just demo): the public booking page needs a
+  // catalog to offer. The clinic edits/replaces these from Admin → Services.
+  const serviceDefs = [
+    ['Dermatology consultation', 'Skin check and diagnosis', 30, 800, 'Dermatology', '#7c3aed', [0]],
+    ['General consultation', 'General medical consultation', 30, 600, 'General', '#0ea5e9', [1]],
+    ['Dental cleaning', 'Professional dental cleaning', 45, 900, 'Dentistry', '#f59e0b', [2]],
+    ['Dental check-up', 'Routine dental examination', 30, 500, 'Dentistry', '#f59e0b', [2]],
+    ['Follow-up visit', 'Follow-up on a previous consultation', 20, 350, 'General', '#16a34a', [0, 1, 2]],
+  ];
+  for (const [name, description, durationMinutes, price, category, color, docIdx] of serviceDefs) {
+    let svc = await prisma.service.findFirst({ where: { name } });
+    if (!svc) {
+      svc = await prisma.service.create({
+        data: { name, description, durationMinutes, price, category, color, commissionRate: 10 },
+      });
+      for (const i of docIdx) {
+        await prisma.doctorService.create({ data: { serviceId: svc.id, doctorId: doctors[i].id } });
+      }
+    }
+  }
+
+  // -- Reminder engine defaults ----------------------------------------------
+  for (const [key, value] of [
+    ['reminder.enabled', 'true'],
+    ['reminder.offsetsHours', '[24]'],
+    ['reminder.channels', '["WHATSAPP"]'],
+    ['reminder.templateName', 'appointment_reminder'],
+  ]) {
+    await prisma.setting.upsert({ where: { key }, update: {}, create: { key, value } });
   }
 
   // -- Message templates (§9A: approved templates for out-of-window reengage) -
@@ -96,9 +130,23 @@ async function main() {
 
   // -- Demo agents + conversations — skipped in production -------------------
   if (!seedDemo) {
-    console.log(`Seed complete (production): admin (${adminEmail}) + doctors + templates.`);
+    console.log(`Seed complete (production): admin (${adminEmail}) + doctors + services + templates.`);
     console.log('Create your agents from the Admin screen after logging in.');
     return;
+  }
+
+  // Demo inventory (dev/demo only — a real clinic loads its own stock).
+  for (const [sku, name, category, price, cost, stock, threshold] of [
+    ['SKU-001', 'Sunscreen SPF 50', 'Dermatology', 320, 180, 24, 5],
+    ['SKU-002', 'Fluoride toothpaste', 'Dentistry', 95, 48, 40, 10],
+    ['SKU-003', 'Vitamin C serum', 'Dermatology', 540, 300, 3, 5],
+    ['SKU-004', 'Surgical masks (50)', 'General', 150, 70, 0, 8],
+  ]) {
+    await prisma.product.upsert({
+      where: { sku },
+      update: {},
+      create: { sku, name, category, price, cost, stock, lowStockThreshold: threshold },
+    });
   }
 
   const existingCustomers = await prisma.customer.count();
